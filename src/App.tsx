@@ -34,6 +34,55 @@ async function fetchExtendedPublicKey() {
   }
 }
 
+const BLOCKFROST_PROJECT_ID = 'mainnettssNeYQtpuod4KVg8F7SDr5kW27mb7hJ'; //fixme
+const BLOCKFROST_BASE_URL = 'https://cardano-mainnet.blockfrost.io/api/v0';
+
+async function blockfrostFetch(path: string) {
+  const resp = await fetch(`${BLOCKFROST_BASE_URL}${path}`, {
+    headers: { project_id: BLOCKFROST_PROJECT_ID },
+  });
+  if (!resp.ok) {
+    throw new Error(`Blockfrost ${path} returned ${resp.status}`);
+  }
+  return resp.json();
+}
+
+async function retry(func, errorHandler) {
+  if (!errorHandler) {
+    errorHandler = async () => {
+      console.error('just failed, retry');
+      await pause();
+    };
+  };
+  for (;;) {
+    try {
+      return await func();
+    } catch (error) {
+      await errorHandler(error);
+    }
+  }
+}
+
+async function getLastBlockHashOfPool(poolId) {
+  const resp = await retry(
+    async () => await blockfrostFetch(`/pools/${poolId}/blocks?page=1&count=1&order=desc`),
+    (error) => console.log(`error getting latest block hash: ${error.message}`)
+  );
+  return resp[0];
+}
+
+async function getOpCertCounter(poolId) {
+  const blockHash = await getLastBlockHashOfPool(poolId);
+  if (blockHash === undefined) {
+    return -1;
+  }
+  const resp = await retry(
+    async () => await blockfrostFetch(`/blocks/${blockHash}`),
+    (error) => console.log(`error getting block: ${error.message}`)
+  );
+  return Number(resp.op_cert_counter);
+}
+
 export default function App() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -46,11 +95,15 @@ export default function App() {
     try {
       setStatus({ kind: "loading" });
       const result = await fetchExtendedPublicKey();
+      const poolId = derivePoolId(result.publicKeyHex);
+      const poolCounter = await getOpCertCounter(poolId);
+      console.log('poolCounter:', poolCounter);
+
       setStatus({
         kind: "success",
         publicKeyHex: result.publicKeyHex,
         chainCodeHex: result.chainCodeHex,
-        poolId: derivePoolId(result.publicKeyHex),
+        poolId,
       });
     } catch (err) {
       setStatus({
