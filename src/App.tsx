@@ -1,13 +1,21 @@
 import { useState, useEffect } from "react";
 import { Ada, HARDENED } from "@cardano-foundation/ledgerjs-hw-app-cardano";
 import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
+import { blake2b } from "@noble/hashes/blake2.js";
+import bech32 from "bech32";
 
 type Status =
   | { kind: "idle" }
   | { kind: "connecting" }
   | { kind: "loading" }
-  | { kind: "success"; publicKeyHex: string; chainCodeHex: string }
+  | { kind: "success"; publicKeyHex: string; chainCodeHex: string; poolId: string }
   | { kind: "error"; message: string };
+
+function derivePoolId(publicKeyHex: string): string {
+  const bytes = Uint8Array.from(Buffer.from(publicKeyHex, "hex"));
+  const hash = blake2b(bytes, { dkLen: 28 });
+  return bech32.encode("pool", bech32.toWords(hash));
+}
 
 const PATH = [
   1853 + HARDENED,
@@ -42,6 +50,7 @@ export default function App() {
         kind: "success",
         publicKeyHex: result.publicKeyHex,
         chainCodeHex: result.chainCodeHex,
+        poolId: derivePoolId(result.publicKeyHex),
       });
     } catch (err) {
       setStatus({
@@ -77,6 +86,10 @@ export default function App() {
 
       {status.kind === "success" && (
         <div style={styles.card}>
+          <div style={styles.field}>
+            <span style={styles.label}>Pool ID</span>
+            <code style={styles.value}>{status.poolId}</code>
+          </div>
           <div style={styles.field}>
             <span style={styles.label}>Public Key</span>
             <code style={styles.value}>{status.publicKeyHex}</code>
