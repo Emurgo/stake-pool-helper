@@ -6,6 +6,9 @@
     "build": "bun build index.html --outdir dist"
   },
   "dependencies": {
+    "@cardano-foundation/ledgerjs-hw-app-cardano": "^7.1.4",
+    "@ledgerhq/hw-transport-webusb": "^6.33.0",
+    "buffer": "^6.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
