@@ -271,14 +271,9 @@ export default function App() {
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>Pool KES Utils</h1>
-      <h2 style={styles.subtitle}>Extended Public Key</h2>
-      <p style={styles.path}>Path: 1853H / 1815H / 0H / 0H</p>
 
       {(status.kind === "idle" || status.kind === "connecting") && (
         <div style={styles.card}>
-          <p style={styles.hint}>
-            Connect your Ledger device, open the Cardano app, then click below.
-          </p>
           <div style={styles.field}>
             <label style={styles.label} htmlFor="internalPoolId">Internal Pool ID</label>
             <input
@@ -287,9 +282,13 @@ export default function App() {
               type="text"
               value={internalPoolId}
               onChange={e => setInternalPoolId(e.target.value)}
-              placeholder="e.g. my-pool"
             />
           </div>
+
+          <p style={styles.hint}>
+            Connect your Ledger device, open the Cardano app, then click below.
+          </p>
+
           <button
             style={{ ...styles.button, ...(internalPoolId.trim() === "" ? styles.buttonDisabled : {}) }}
             onClick={connect}
@@ -321,9 +320,6 @@ export default function App() {
           <p style={styles.hint}>
             Please transfer the downloaded file <strong>{status.downloadedFilename}</strong> to the DevOps team.
           </p>
-          <button style={{ ...styles.button, ...styles.secondary }} onClick={connect}>
-            Refresh
-          </button>
         </div>
       )}
 
