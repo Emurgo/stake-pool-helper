@@ -10,7 +10,7 @@ type Status =
   | { kind: "idle" }
   | { kind: "connecting" }
   | { kind: "loading" }
-  | { kind: "success"; publicKeyHex: string; chainCodeHex: string; poolId: string }
+  | { kind: "success"; poolId: string; ticker: string | null; downloadedFilename: string }
   | { kind: "error"; message: string };
 
 function derivePoolId(publicKeyHex: string): string {
@@ -77,6 +77,15 @@ async function retry(func, errorHandler) {
     } catch (error) {
       await errorHandler(error);
     }
+  }
+}
+
+async function getPoolTicker(poolId: string): Promise<string | null> {
+  try {
+    const resp = await blockfrostFetch(`/pools/${poolId}/metadata`);
+    return resp.ticker ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -214,6 +223,8 @@ export default function App() {
       const exportColdPublicKeyResult = await fetchExtendedPublicKey();
       const poolId = derivePoolId(exportColdPublicKeyResult.publicKeyHex);
       console.log('poolId:', poolId);
+      const ticker = await getPoolTicker(poolId);
+      console.log('ticker:', ticker);
       const oldCounter = await getOpCertCounter(poolId);
       const poolCounter = oldCounter + 1;
       console.log('poolCounter:', poolCounter);
@@ -241,17 +252,13 @@ export default function App() {
 
       const kesSKeyFileContent = createKesSKeyFileContent(kesSKey);
 
-      downloadTar(`${internalPoolId}.tar`, [
+      const downloadedFilename = `${internalPoolId}.tar`;
+      downloadTar(downloadedFilename, [
         { name: 'node.cert', content: nodeOpCertFileContent },
         { name: 'kes.skey', content: kesSKeyFileContent },
       ]);
 
-      setStatus({
-        kind: "success",
-        publicKeyHex: exportColdPublicKeyResult.publicKeyHex,
-        chainCodeHex: exportColdPublicKeyResult.chainCodeHex,
-        poolId,
-      });
+      setStatus({ kind: "success", poolId, ticker, downloadedFilename });
     } catch (err) {
       setStatus({
         kind: "error",
@@ -305,14 +312,15 @@ export default function App() {
             <span style={styles.label}>Pool ID</span>
             <code style={styles.value}>{status.poolId}</code>
           </div>
-          <div style={styles.field}>
-            <span style={styles.label}>Public Key</span>
-            <code style={styles.value}>{status.publicKeyHex}</code>
-          </div>
-          <div style={styles.field}>
-            <span style={styles.label}>Chain Code</span>
-            <code style={styles.value}>{status.chainCodeHex}</code>
-          </div>
+          {status.ticker !== null && (
+            <div style={styles.field}>
+              <span style={styles.label}>Ticker</span>
+              <code style={styles.value}>{status.ticker}</code>
+            </div>
+          )}
+          <p style={styles.hint}>
+            Please transfer the downloaded file <strong>{status.downloadedFilename}</strong> to the DevOps team.
+          </p>
           <button style={{ ...styles.button, ...styles.secondary }} onClick={connect}>
             Refresh
           </button>
