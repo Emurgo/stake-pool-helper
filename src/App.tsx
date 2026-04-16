@@ -57,9 +57,9 @@ function getBlockfrostProjectId(): string {
   return new URLSearchParams(window.location.hash.slice(1)).get('blockfrost-api-key') ?? '';
 }
 
-async function blockfrostFetch(path: string) {
+async function blockfrostFetch(path: string, projectId: string) {
   const resp = await fetch(`${BLOCKFROST_BASE_URL}${path}`, {
-    headers: { project_id: getBlockfrostProjectId() },
+    headers: { project_id: projectId },
   });
   if (!resp.ok) {
     throw new Error(`Blockfrost ${path} returned ${resp.status}`);
@@ -83,30 +83,30 @@ async function retry(func, errorHandler) {
   }
 }
 
-async function getPoolTicker(poolId: string): Promise<string | null> {
+async function getPoolTicker(poolId: string, projectId: string): Promise<string | null> {
   try {
-    const resp = await blockfrostFetch(`/pools/${poolId}/metadata`);
+    const resp = await blockfrostFetch(`/pools/${poolId}/metadata`, projectId);
     return resp.ticker ?? null;
   } catch {
     return null;
   }
 }
 
-async function getLastBlockHashOfPool(poolId) {
+async function getLastBlockHashOfPool(poolId: string, projectId: string) {
   const resp = await retry(
-    async () => await blockfrostFetch(`/pools/${poolId}/blocks?page=1&count=1&order=desc`),
+    async () => await blockfrostFetch(`/pools/${poolId}/blocks?page=1&count=1&order=desc`, projectId),
     (error) => console.log(`error getting latest block hash: ${error.message}`)
   );
   return resp[0];
 }
 
-async function getOpCertCounter(poolId) {
-  const blockHash = await getLastBlockHashOfPool(poolId);
+async function getOpCertCounter(poolId: string, projectId: string) {
+  const blockHash = await getLastBlockHashOfPool(poolId, projectId);
   if (blockHash === undefined) {
     return -1;
   }
   const resp = await retry(
-    async () => await blockfrostFetch(`/blocks/${blockHash}`),
+    async () => await blockfrostFetch(`/blocks/${blockHash}`, projectId),
     (error) => console.log(`error getting block: ${error.message}`)
   );
   return Number(resp.op_cert_counter);
@@ -213,7 +213,20 @@ function downloadTar(filename: string, files: { name: string; content: string }[
 
 export default function App() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [blockfrostApiKey, setBlockfrostApiKey] = useState(getBlockfrostProjectId);
   const [internalPoolId, setInternalPoolId] = useState("");
+
+  function handleApiKeyChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const key = e.target.value;
+    setBlockfrostApiKey(key);
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    if (key) {
+      params.set('blockfrost-api-key', key);
+    } else {
+      params.delete('blockfrost-api-key');
+    }
+    history.replaceState(null, '', '#' + params.toString());
+  }
 
   useEffect(() => {
     setStatus({ kind: "connecting" });
@@ -226,9 +239,9 @@ export default function App() {
       const exportColdPublicKeyResult = await fetchExtendedPublicKey();
       const poolId = derivePoolId(exportColdPublicKeyResult.publicKeyHex);
       console.log('poolId:', poolId);
-      const ticker = await getPoolTicker(poolId);
+      const ticker = await getPoolTicker(poolId, blockfrostApiKey);
       console.log('ticker:', ticker);
-      const oldCounter = await getOpCertCounter(poolId);
+      const oldCounter = await getOpCertCounter(poolId, blockfrostApiKey);
       const poolCounter = oldCounter + 1;
       console.log('poolCounter:', poolCounter);
 
@@ -277,6 +290,17 @@ export default function App() {
 
       {(status.kind === "idle" || status.kind === "connecting") && (
         <div style={styles.card}>
+          <div style={styles.field}>
+            <label style={styles.label} htmlFor="blockfrostApiKey">Blockfrost API Key</label>
+            <input
+              id="blockfrostApiKey"
+              style={styles.input}
+              type="text"
+              value={blockfrostApiKey}
+              onChange={handleApiKeyChange}
+              placeholder="mainnet..."
+            />
+          </div>
           <div style={styles.field}>
             <label style={styles.label} htmlFor="internalPoolId">Internal Pool ID</label>
             <input
