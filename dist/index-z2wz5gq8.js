@@ -31919,9 +31919,9 @@ var BLOCKFROST_BASE_URL = "https://cardano-mainnet.blockfrost.io/api/v0";
 function getBlockfrostProjectId() {
   return new URLSearchParams(window.location.hash.slice(1)).get("blockfrost-api-key") ?? "";
 }
-async function blockfrostFetch(path) {
+async function blockfrostFetch(path, projectId) {
   const resp = await fetch(`${BLOCKFROST_BASE_URL}${path}`, {
-    headers: { project_id: getBlockfrostProjectId() }
+    headers: { project_id: projectId }
   });
   if (!resp.ok) {
     throw new Error(`Blockfrost ${path} returned ${resp.status}`);
@@ -31943,24 +31943,24 @@ async function retry(func, errorHandler) {
     }
   }
 }
-async function getPoolTicker(poolId) {
+async function getPoolTicker(poolId, projectId) {
   try {
-    const resp = await blockfrostFetch(`/pools/${poolId}/metadata`);
+    const resp = await blockfrostFetch(`/pools/${poolId}/metadata`, projectId);
     return resp.ticker ?? null;
   } catch {
     return null;
   }
 }
-async function getLastBlockHashOfPool(poolId) {
-  const resp = await retry(async () => await blockfrostFetch(`/pools/${poolId}/blocks?page=1&count=1&order=desc`), (error) => console.log(`error getting latest block hash: ${error.message}`));
+async function getLastBlockHashOfPool(poolId, projectId) {
+  const resp = await retry(async () => await blockfrostFetch(`/pools/${poolId}/blocks?page=1&count=1&order=desc`, projectId), (error) => console.log(`error getting latest block hash: ${error.message}`));
   return resp[0];
 }
-async function getOpCertCounter(poolId) {
-  const blockHash = await getLastBlockHashOfPool(poolId);
+async function getOpCertCounter(poolId, projectId) {
+  const blockHash = await getLastBlockHashOfPool(poolId, projectId);
   if (blockHash === undefined) {
     return -1;
   }
-  const resp = await retry(async () => await blockfrostFetch(`/blocks/${blockHash}`), (error) => console.log(`error getting block: ${error.message}`));
+  const resp = await retry(async () => await blockfrostFetch(`/blocks/${blockHash}`, projectId), (error) => console.log(`error getting block: ${error.message}`));
   return Number(resp.op_cert_counter);
 }
 function getCurrentKesPeriod() {
@@ -32040,7 +32040,19 @@ function downloadTar(filename, files) {
 }
 function App() {
   const [status, setStatus] = import_react.useState({ kind: "idle" });
+  const [blockfrostApiKey, setBlockfrostApiKey] = import_react.useState(getBlockfrostProjectId);
   const [internalPoolId, setInternalPoolId] = import_react.useState("");
+  function handleApiKeyChange(e2) {
+    const key = e2.target.value;
+    setBlockfrostApiKey(key);
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    if (key) {
+      params.set("blockfrost-api-key", key);
+    } else {
+      params.delete("blockfrost-api-key");
+    }
+    history.replaceState(null, "", "#" + params.toString());
+  }
   import_react.useEffect(() => {
     setStatus({ kind: "connecting" });
   }, []);
@@ -32051,9 +32063,9 @@ function App() {
       const exportColdPublicKeyResult = await fetchExtendedPublicKey();
       const poolId = derivePoolId(exportColdPublicKeyResult.publicKeyHex);
       console.log("poolId:", poolId);
-      const ticker = await getPoolTicker(poolId);
+      const ticker = await getPoolTicker(poolId, blockfrostApiKey);
       console.log("ticker:", ticker);
-      const oldCounter = await getOpCertCounter(poolId);
+      const oldCounter = await getOpCertCounter(poolId, blockfrostApiKey);
       const poolCounter = oldCounter + 1;
       console.log("poolCounter:", poolCounter);
       const depth = 6;
@@ -32087,11 +32099,29 @@ function App() {
     children: [
       /* @__PURE__ */ jsx_dev_runtime.jsxDEV("h1", {
         style: styles.title,
-        children: "Pool KES Utils"
+        children: "Cardano Pool KES rotation helper"
       }, undefined, false, undefined, this),
       (status.kind === "idle" || status.kind === "connecting") && /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
         style: styles.card,
         children: [
+          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
+            style: styles.field,
+            children: [
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("label", {
+                style: styles.label,
+                htmlFor: "blockfrostApiKey",
+                children: "Blockfrost API Key"
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("input", {
+                id: "blockfrostApiKey",
+                style: styles.input,
+                type: "text",
+                value: blockfrostApiKey,
+                onChange: handleApiKeyChange,
+                placeholder: "mainnet..."
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this),
           /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
             style: styles.field,
             children: [

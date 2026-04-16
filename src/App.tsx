@@ -286,7 +286,7 @@ export default function App() {
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Pool KES Utils</h1>
+      <h1 style={styles.title}>Cardano Pool KES rotation helper</h1>
 
       {(status.kind === "idle" || status.kind === "connecting") && (
         <div style={styles.card}>
