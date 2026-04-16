@@ -35,6 +35,21 @@ async function fetchExtendedPublicKey() {
   }
 }
 
+async function fetchOpCertSignature(kesPublicKeyHex, kesPeriod, issueCounter) {
+  const transport = await TransportWebUSB.create();
+  try {
+    const ada = new Ada(transport);
+    return await ada.signOperationalCertificate({
+      kesPublicKeyHex,
+      kesPeriod,
+      issueCounter,
+      coldKeyPath: PATH,
+    });
+  } finally {
+    await transport.close();
+  }
+}
+
 const BLOCKFROST_PROJECT_ID = 'mainnettssNeYQtpuod4KVg8F7SDr5kW27mb7hJ'; //fixme
 const BLOCKFROST_BASE_URL = 'https://cardano-mainnet.blockfrost.io/api/v0';
 
@@ -84,6 +99,14 @@ async function getOpCertCounter(poolId) {
   return Number(resp.op_cert_counter);
 }
 
+function getCurrentKesPeriod() {
+  const T = new Date('2023/06/19 11:32:22 UTC');
+  const S = 95608051;
+  const K = 129600;
+  const currentSlot = Math.floor((Date.now() - T.valueOf()) / 1000 + S);
+  return Math.floor(currentSlot / K);
+}
+
 export default function App() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -97,15 +120,23 @@ export default function App() {
       setStatus({ kind: "loading" });
       const result = await fetchExtendedPublicKey();
       const poolId = derivePoolId(result.publicKeyHex);
+      console.log('poolId:', poolId);
       const poolCounter = await getOpCertCounter(poolId);
       console.log('poolCounter:', poolCounter);
 
       const depth = 6; // 64 periods (Cardano mainnet)
       const seed = crypto.getRandomValues(new Uint8Array(32));
-      const { signKey, verKey } = genKeyKES(seed, depth);
-      console.log('KES vkey', Buffer.from(verKey).toString('hex'));
-      console.log('KES skey', Buffer.from(signKey).toString('hex'));
+      const kes = genKeyKES(seed, depth);
+      const kesVKey = Buffer.from(kes.verKey).toString('hex')
+      const kesSKey = Buffer.from(kes.signKey).toString('hex')
+      console.log('KES vkey', kesVKey);
+      console.log('KES skey', kesSKey);
       
+      const keyPeriod = getCurrentKesPeriod();
+
+      const { signatureHex } = await fetchOpCertSignature(kesVKey, keyPeriod, poolCounter + 1);
+      console.log('operational certificate signature:', signatureHex);
+
       setStatus({
         kind: "success",
         publicKeyHex: result.publicKeyHex,
