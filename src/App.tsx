@@ -4,6 +4,7 @@ import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { bech32 } from "bech32";
 import { genKeyKES } from "./kes";
+import { encode } from 'cbor2';
 
 type Status =
   | { kind: "idle" }
@@ -107,8 +108,100 @@ function getCurrentKesPeriod() {
   return Math.floor(currentSlot / K);
 }
 
+function createNodeOpCertFileContent(kesVKey, coldVKey, kesPeriod, counter, signature) {
+  const cborHex = encode(
+    [
+      [
+        Uint8Array.fromHex(kesVKey),
+        counter,
+        kesPeriod,
+        Uint8Array.fromHex(signature),
+      ],
+      Uint8Array.fromHex(coldVKey),
+    ]
+  ).toHex();
+
+  return JSON.stringify({
+    "type": "NodeOperationalCertificate",
+    "description": "",
+    cborHex,
+  }, null, 4);
+}
+
+function createKesSKeyFileContent(kesSKey) {
+  const cborHex = encode(Uint8Array.fromHex(kesSKey)).toHex();
+
+  return JSON.stringify({
+   "type": "KesSigningKey_ed25519_kes_2^6",
+    "description": "KES Signing Key",
+    cborHex,
+  }, null, 4);
+}
+
+function createTar(files: { name: string; content: string }[]): Uint8Array {
+  const enc = new TextEncoder();
+  const blocks: Uint8Array[] = [];
+
+  for (const file of files) {
+    const contentBytes = enc.encode(file.content);
+    const header = new Uint8Array(512);
+
+    // filename (offset 0, 100 bytes)
+    header.set(enc.encode(file.name).slice(0, 100), 0);
+    // mode (offset 100)
+    header.set(enc.encode('0000644\0'), 100);
+    // uid (offset 108)
+    header.set(enc.encode('0000000\0'), 108);
+    // gid (offset 116)
+    header.set(enc.encode('0000000\0'), 116);
+    // size in octal (offset 124, 12 bytes)
+    header.set(enc.encode(contentBytes.length.toString(8).padStart(11, '0') + '\0'), 124);
+    // mtime in octal (offset 136, 12 bytes)
+    header.set(enc.encode(Math.floor(Date.now() / 1000).toString(8).padStart(11, '0') + '\0'), 136);
+    // checksum placeholder — 8 spaces (offset 148)
+    header.set(enc.encode('        '), 148);
+    // type flag: regular file (offset 156)
+    header[156] = 48; // '0'
+    // ustar magic (offset 257)
+    header.set(enc.encode('ustar\0'), 257);
+    header.set(enc.encode('00'), 263);
+
+    // compute and write checksum
+    let checksum = 0;
+    for (let i = 0; i < 512; i++) checksum += header[i];
+    header.set(enc.encode(checksum.toString(8).padStart(6, '0') + '\0 '), 148);
+
+    blocks.push(header);
+
+    // file content padded to a multiple of 512
+    const padded = new Uint8Array(Math.ceil(contentBytes.length / 512) * 512);
+    padded.set(contentBytes);
+    blocks.push(padded);
+  }
+
+  // end-of-archive: two zero blocks
+  blocks.push(new Uint8Array(1024));
+
+  const total = blocks.reduce((s, b) => s + b.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const b of blocks) { out.set(b, offset); offset += b.length; }
+  return out;
+}
+
+function downloadTar(filename: string, files: { name: string; content: string }[]) {
+  const data = createTar(files);
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/x-tar' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function App() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [internalPoolId, setInternalPoolId] = useState("");
 
   useEffect(() => {
     setStatus({ kind: "connecting" });
@@ -118,10 +211,11 @@ export default function App() {
     setStatus({ kind: "connecting" });
     try {
       setStatus({ kind: "loading" });
-      const result = await fetchExtendedPublicKey();
-      const poolId = derivePoolId(result.publicKeyHex);
+      const exportColdPublicKeyResult = await fetchExtendedPublicKey();
+      const poolId = derivePoolId(exportColdPublicKeyResult.publicKeyHex);
       console.log('poolId:', poolId);
-      const poolCounter = await getOpCertCounter(poolId);
+      const oldCounter = await getOpCertCounter(poolId);
+      const poolCounter = oldCounter + 1;
       console.log('poolCounter:', poolCounter);
 
       const depth = 6; // 64 periods (Cardano mainnet)
@@ -132,15 +226,30 @@ export default function App() {
       console.log('KES vkey', kesVKey);
       console.log('KES skey', kesSKey);
       
-      const keyPeriod = getCurrentKesPeriod();
+      const kesPeriod = getCurrentKesPeriod();
 
-      const { signatureHex } = await fetchOpCertSignature(kesVKey, keyPeriod, poolCounter + 1);
+      const { signatureHex } = await fetchOpCertSignature(kesVKey, kesPeriod, poolCounter);
       console.log('operational certificate signature:', signatureHex);
+
+      const nodeOpCertFileContent = createNodeOpCertFileContent(
+        kesVKey,
+        exportColdPublicKeyResult.publicKeyHex,
+        kesPeriod,
+        poolCounter,
+        signatureHex
+      );
+
+      const kesSKeyFileContent = createKesSKeyFileContent(kesSKey);
+
+      downloadTar(`${internalPoolId}.tar`, [
+        { name: 'node.cert', content: nodeOpCertFileContent },
+        { name: 'kes.skey', content: kesSKeyFileContent },
+      ]);
 
       setStatus({
         kind: "success",
-        publicKeyHex: result.publicKeyHex,
-        chainCodeHex: result.chainCodeHex,
+        publicKeyHex: exportColdPublicKeyResult.publicKeyHex,
+        chainCodeHex: exportColdPublicKeyResult.chainCodeHex,
         poolId,
       });
     } catch (err) {
@@ -163,7 +272,22 @@ export default function App() {
           <p style={styles.hint}>
             Connect your Ledger device, open the Cardano app, then click below.
           </p>
-          <button style={styles.button} onClick={connect}>
+          <div style={styles.field}>
+            <label style={styles.label} htmlFor="internalPoolId">Internal Pool ID</label>
+            <input
+              id="internalPoolId"
+              style={styles.input}
+              type="text"
+              value={internalPoolId}
+              onChange={e => setInternalPoolId(e.target.value)}
+              placeholder="e.g. my-pool"
+            />
+          </div>
+          <button
+            style={{ ...styles.button, ...(internalPoolId.trim() === "" ? styles.buttonDisabled : {}) }}
+            onClick={connect}
+            disabled={internalPoolId.trim() === ""}
+          >
             Connect Ledger &amp; Get Key
           </button>
         </div>
@@ -251,6 +375,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#555",
     margin: 0,
   },
+  input: {
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "8px 10px",
+    fontSize: 14,
+    borderRadius: 4,
+    border: "1px solid #d1d5db",
+    outline: "none",
+  },
   button: {
     background: "#1d4ed8",
     color: "#fff",
@@ -259,6 +393,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "10px 20px",
     fontSize: 15,
     cursor: "pointer",
+  },
+  buttonDisabled: {
+    background: "#93c5fd",
+    cursor: "not-allowed",
   },
   secondary: {
     background: "#6b7280",
