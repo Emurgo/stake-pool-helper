@@ -31915,11 +31915,13 @@ async function fetchOpCertSignature(kesPublicKeyHex, kesPeriod, issueCounter) {
     await transport.close();
   }
 }
-var BLOCKFROST_PROJECT_ID = "mainnettssNeYQtpuod4KVg8F7SDr5kW27mb7hJ";
 var BLOCKFROST_BASE_URL = "https://cardano-mainnet.blockfrost.io/api/v0";
+function getBlockfrostProjectId() {
+  return new URLSearchParams(window.location.hash.slice(1)).get("blockfrost-api-key") ?? "";
+}
 async function blockfrostFetch(path) {
   const resp = await fetch(`${BLOCKFROST_BASE_URL}${path}`, {
-    headers: { project_id: BLOCKFROST_PROJECT_ID }
+    headers: { project_id: getBlockfrostProjectId() }
   });
   if (!resp.ok) {
     throw new Error(`Blockfrost ${path} returned ${resp.status}`);
