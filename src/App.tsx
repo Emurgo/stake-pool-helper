@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Ada, HARDENED } from "@cardano-foundation/ledgerjs-hw-app-cardano";
 import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
 import { blake2b } from "@noble/hashes/blake2.js";
-import bech32 from "bech32";
+import { bech32 } from "bech32";
+import { genKeyKES } from "./kes";
 
 type Status =
   | { kind: "idle" }
@@ -99,6 +100,12 @@ export default function App() {
       const poolCounter = await getOpCertCounter(poolId);
       console.log('poolCounter:', poolCounter);
 
+      const depth = 6; // 64 periods (Cardano mainnet)
+      const seed = crypto.getRandomValues(new Uint8Array(32));
+      const { signKey, verKey } = genKeyKES(seed, depth);
+      console.log('KES vkey', Buffer.from(verKey).toString('hex'));
+      console.log('KES skey', Buffer.from(signKey).toString('hex'));
+      
       setStatus({
         kind: "success",
         publicKeyHex: result.publicKeyHex,

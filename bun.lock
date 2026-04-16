@@ -7,6 +7,7 @@
       "dependencies": {
         "@cardano-foundation/ledgerjs-hw-app-cardano": "^7.1.4",
         "@ledgerhq/hw-transport-webusb": "^6.33.0",
+        "@noble/curves": "^2.2.0",
         "@noble/hashes": "^2.2.0",
         "bech32": "^2.0.0",
         "buffer": "^6.0.3",
@@ -32,6 +33,8 @@
     "@ledgerhq/hw-transport-webusb": ["@ledgerhq/hw-transport-webusb@6.33.0", "", { "dependencies": { "@ledgerhq/devices": "8.13.0", "@ledgerhq/errors": "^6.32.0", "@ledgerhq/hw-transport": "6.34.1", "@ledgerhq/logs": "^6.16.0" } }, "sha512-/CSDMzBykihqumItyRxmrmqvBHIBRO9eQlHk2Xvrok6X09EF8ENglcITmEiyqvtDQEofD9A0+tdUhWgV9z82fg=="],
 
     "@ledgerhq/logs": ["@ledgerhq/logs@6.16.0", "", {}, "sha512-v/PLfb1dq1En35kkpbfRWp8jLYgbPUXxGhmd4pmvPSIe0nRGkNTomsZASmWQAv6pRonVGqHIBVlte7j1MBbOww=="],
+
+    "@noble/curves": ["@noble/curves@2.2.0", "", { "dependencies": { "@noble/hashes": "2.2.0" } }, "sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ=="],
 
     "@noble/hashes": ["@noble/hashes@2.2.0", "", {}, "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg=="],
 
